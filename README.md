@@ -1,2 +1,2 @@
 # B-Donor
-B-Donor (The University Blood Donor Emergency Alert System ) is a mobile-friendly web  application designed to address this problem and bridge this gap.
+ B-DONOR provides a reliable solution for improving emergency blood donation response within the  university community. 
