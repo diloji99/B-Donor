@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
-import { FaUser, FaLock } from 'react-icons/fa';
+import { FaUser, FaLock, FaQuestionCircle } from 'react-icons/fa';
 import { GiBlood } from 'react-icons/gi';
 
 const DonorLogin = () => {
@@ -46,6 +46,18 @@ const DonorLogin = () => {
     }
   };
 
+  const handleForgotPassword = () => {
+    // You can implement the forgot password logic here
+    // For example, navigate to a forgot password page or show a modal
+    const universityId = prompt('Please enter your University ID to reset your password:');
+    if (universityId) {
+      // Here you would typically make an API call to send reset password email
+      alert(`Password reset instructions will be sent to the email associated with ${universityId}`);
+      // Alternatively, navigate to a dedicated forgot password page:
+      // navigate('/donor/forgot-password');
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-red-50 to-white px-4">
       <div className="max-w-md w-full space-y-8">
@@ -87,9 +99,12 @@ const DonorLogin = () => {
 
             {/* Password */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Password
-              </label>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Password
+                </label>
+              
+              </div>
               <div className="relative">
                 <FaLock className="absolute left-3 top-3 text-gray-400" />
                 <input
@@ -123,7 +138,7 @@ const DonorLogin = () => {
             </p>
 
           </form>
-
+           
           {/* Footer Links */}
           <div className="mt-6 pt-4 border-t text-center text-sm">
             <Link to="/" className="text-red-600 hover:underline">
@@ -134,6 +149,15 @@ const DonorLogin = () => {
               Admin Login →
             </Link>
           </div>
+           <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  className="text-sm p-3 text-center text-red-600 hover:text-red-800 flex items-center gap-1"
+                >
+                  <FaQuestionCircle className="text-xs" />
+                  Forgot Password?
+            </button>
+
         </div>
       </div>
     </div>
