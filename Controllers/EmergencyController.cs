@@ -1,10 +1,11 @@
-﻿// Controllers/EmergencyController.cs (Updated)
+// Controllers/EmergencyController.cs (Updated)
+using first;
+using first.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using UniProject.Dtos;
-using UniProject.Models;
 using UniProject.Services;
 
 
@@ -31,7 +32,7 @@ namespace UniProject.Controllers
             _notificationService = notificationService;
         }
 
-        [Authorize(Roles = "Admin")]
+ 
         [HttpPost("create")]
         public async Task<IActionResult> CreateEmergency([FromBody] CreateEmergencyDto emergencyDto)
         {
@@ -79,7 +80,7 @@ namespace UniProject.Controllers
             }
         }
 
-        [Authorize(Roles = "Admin")]
+
         [HttpPost("test-notifications")]
         public async Task<IActionResult> TestNotifications([FromBody] TestNotificationDto dto)
         {
