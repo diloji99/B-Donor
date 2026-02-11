@@ -1,137 +1,110 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using global::UniProject.Models;
-using Microsoft.AspNetCore.Authorization;
-// Controllers/DonorController.cs (Updated)
+// Controllers/DonorController.cs
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using System.Security.Claims;
-using UniProject.Dtos;
 using UniProject.Services;
-
+using first;
+using first.Models;
 
 namespace UniProject.Controllers
-    {
+{
     [ApiController]
     [Route("api/[controller]")]
     public class DonorController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
-        private readonly EmergencyAlertService _alertService;
-        private readonly ILogger<DonorController> _logger;
         private readonly CompositeNotificationService _notificationService;
-        private readonly IConfiguration _configuration;
+        private readonly ILogger<DonorController> _logger;
 
         public DonorController(
             ApplicationDbContext context,
-            EmergencyAlertService alertService,
-            ILogger<DonorController> logger,
             CompositeNotificationService notificationService,
-            IConfiguration configuration)
+            ILogger<DonorController> logger)
         {
             _context = context;
-            _alertService = alertService;
-            _logger = logger;
             _notificationService = notificationService;
-            _configuration = configuration;
+            _logger = logger;
         }
 
-        [HttpPost("register")]
-        public async Task<IActionResult> RegisterDonor([FromBody] DonorRegistrationDto registrationDto)
+        // ===============================
+        // GET: Active emergencies
+        // ===============================
+        [HttpGet("emergencies")]
+        public async Task<IActionResult> GetActiveEmergencies()
         {
-            try
+            var emergencies = await _context.EmergencyRequests
+                .Where(e => e.IsActive)
+                .OrderByDescending(e => e.CreatedAt)
+                .Select(e => new
+                {
+                    e.Id,
+                    e.BloodGroup,
+                    e.UnitsRequired,
+                    e.Location,
+                    e.Description,
+                    e.CreatedAt
+                })
+                .ToListAsync();
+
+            return Ok(emergencies);
+        }
+
+        // ======================================
+        // POST: Donor accepts an emergency
+        // ======================================
+        [HttpPost("emergencies/{emergencyId}/accept")]
+        public async Task<IActionResult> AcceptEmergency(
+            int emergencyId,
+            [FromBody] AcceptEmergencyRequest request)
+        {
+            // 1️⃣ Validate donor
+            var donor = await _context.Donors.FindAsync(request.DonorId);
+            if (donor == null)
+                return NotFound(new { message = "Donor not found" });
+
+            if (!donor.IsAvailable)
+                return BadRequest(new { message = "You are currently unavailable for donation" });
+
+            // 2️⃣ Validate emergency
+            var emergency = await _context.EmergencyRequests.FindAsync(emergencyId);
+            if (emergency == null || !emergency.IsActive)
+                return NotFound(new { message = "Emergency not available" });
+
+            // 3️⃣ Mark donor unavailable
+            donor.IsAvailable = false;
+
+            await _context.SaveChangesAsync();
+
+            // 4️⃣ Send notification (background)
+            _ = Task.Run(async () =>
             {
-                // Validate phone number format
-                if (!IsValidPhoneNumber(registrationDto.PhoneNumber))
-                    return BadRequest(new { message = "Invalid phone number format" });
-
-                // Validate email format
-                if (!IsValidEmail(registrationDto.Email))
-                    return BadRequest(new { message = "Invalid email format" });
-
-                // Check if donor already exists
-                var existingDonor = await _context.Donors
-                    .FirstOrDefaultAsync(d => d.UniversityId == registrationDto.UniversityId ||
-                                             d.Email == registrationDto.Email);
-
-                if (existingDonor != null)
-                    return BadRequest(new { message = "Donor already registered with this University ID or Email" });
-
-                // Create new donor
-                var donor = new Donor
+                try
                 {
-                    Name = registrationDto.Name,
-                    UniversityId = registrationDto.UniversityId,
-                    BloodGroup = registrationDto.BloodGroup,
-                    PhoneNumber = FormatPhoneNumber(registrationDto.PhoneNumber),
-                    Email = registrationDto.Email.ToLower(),
-                    LastDonationDate = registrationDto.LastDonationDate,
-                    IsAvailable = true,
-
-                };
-
-                await _context.Donors.AddAsync(donor);
-                await _context.SaveChangesAsync();
-
-                // Create default notification preferences
-                var preferences = new NotificationPreferences
-                {
-                    DonorId = donor.Id,
-                    ReceiveEmail = true,
-                    ReceiveSms = true,
-                    EmergencyAlerts = true,
-                    UpdatedAt = DateTime.Now
-                };
-                await _context.NotificationPreferences.AddAsync(preferences);
-                await _context.SaveChangesAsync();
-
-                // Send welcome email
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await _alertService.SendWelcomeEmail(
-                            donor.Name,
-                            donor.Email,
-                            donor.BloodGroup,
-                            donor.UniversityId
-                        );
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError($"Failed to send welcome email: {ex.Message}");
-                    }
-                });
-
-                // Generate JWT token
-                var token = GenerateJwtToken(donor.Id.ToString(), "Donor", donor.UniversityId);
-
-                return Ok(new
-                {
-                    message = "Donor registered successfully",
-                    donorId = donor.Id,
-                    token,
-                    donor = new
-                    {
-                        donor.Name,
-                        donor.UniversityId,
-                        donor.BloodGroup,
+                    await _notificationService.SendEmailAsync(
                         donor.Email,
-                        donor.PhoneNumber
-                    }
-                });
-            }
-            catch (Exception ex)
+                        "Emergency Accepted - B-Donar System",
+                        $"<p>Thank you <b>{donor.Name}</b> for accepting the emergency request.</p>"
+                    );
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Notification error");
+                }
+            });
+
+            return Ok(new
             {
-                _logger.LogError($"Registration failed: {ex.Message}");
-                return StatusCode(500, new { message = "Registration failed", error = ex.Message });
-            }
+                message = "Emergency accepted successfully",
+                emergencyId,
+                donor = donor.Name
+            });
         }
 
-        [Authorize(Roles = "Donor")]
+        // ===============================
+        // POST: Test notifications
+        // ===============================
         [HttpPost("test-notification")]
-        public async Task<IActionResult> TestDonorNotification()
+        public async Task<IActionResult> TestNotification([FromBody] int donorId)
         {
-            var donorId = int.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
             var donor = await _context.Donors.FindAsync(donorId);
 
             if (donor == null)
@@ -139,17 +112,15 @@ namespace UniProject.Controllers
 
             try
             {
-                // Test email
                 await _notificationService.SendEmailAsync(
                     donor.Email,
-                    "Test Notification - B-Donar System",
-                    $"<h3>Test Notification</h3><p>Hello {donor.Name}, this is a test notification from the B-Donar system.</p>"
+                    "Test Notification - B-Donar",
+                    $"<p>Hello {donor.Name}, your notifications are working correctly.</p>"
                 );
 
-                // Test SMS
                 await _notificationService.SendSmsAsync(
                     donor.PhoneNumber,
-                    $"B-Donar Test: Notifications working - {DateTime.Now:HH:mm}"
+                    $"B-Donar Test SMS - {DateTime.Now:HH:mm}"
                 );
 
                 return Ok(new { message = "Test notifications sent successfully" });
@@ -159,46 +130,13 @@ namespace UniProject.Controllers
                 return StatusCode(500, new { message = "Test failed", error = ex.Message });
             }
         }
-
-        private bool IsValidPhoneNumber(string phoneNumber)
-        {
-            // Remove all non-digit characters
-            var digits = new string(phoneNumber.Where(char.IsDigit).ToArray());
-            return digits.Length >= 10;
-        }
-
-        private bool IsValidEmail(string email)
-        {
-            try
-            {
-                var addr = new System.Net.Mail.MailAddress(email);
-                return addr.Address == email;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private string FormatPhoneNumber(string phoneNumber)
-        {
-            // Remove all non-digit characters
-            var digits = new string(phoneNumber.Where(char.IsDigit).ToArray());
-
-            // Ensure it starts with country code for Sri Lanka
-            if (digits.StartsWith("94") && digits.Length == 11)
-                return $"+{digits}";
-            else if (digits.StartsWith("0") && digits.Length == 10)
-                return $"+94{digits.Substring(1)}";
-            else
-                return $"+{digits}";
-        }
-
-        private string GenerateJwtToken(string userId, string role, string uniqueName)
-        {
-            // JWT token generation logic (same as before)
-            return "token";
-        }
     }
-    
+
+    // ===============================
+    // Request DTO
+    // ===============================
+    public class AcceptEmergencyRequest
+    {
+        public int DonorId { get; set; }
+    }
 }
